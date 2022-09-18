@@ -80,7 +80,7 @@ See the [Custom configuration](https://github.com/mfussenegger/nvim-dap-python#c
 
 ## Docker
 
-The local development environment for Open Library already does this. See the [docker-compose.override.yml](https://github.com/internetarchive/openlibrary/blob/c0694cc6ad846b8b684edf78a4b087f64eecdf7e/docker-compose.override.yml) as an example.
+The local development environment for Open Library already does this. See the [docker-compose.override.yml](https://github.com/internetarchive/openlibrary/blob/c0694cc6ad846b8b684edf78a4b087f64eecdf7e/docker-compose.override.yml) as an example. But also see the Open Library specific notes below.
 
 ## Doing the debugging
 
@@ -88,3 +88,32 @@ Again, this is specific to Open Library. To start `debugpy` on the correct proce
 Then visit [/admin/attach_debugger](http://localhost:8080/admin/attach_debugger) and click "Start". This starts `debugpy` on port 3000, and Docker is already configured to forward that port.
 
 In neovim, <leader>d, and select 'start', and `Python: Attach`. This name comes from `.vscode/launch.json`. Do not use the remote connection option because it won't have the local and remote directories configured; `.vscode/launch.json` takes care of this.
+
+## Open Library specific changes
+
+Rather than change the number of works in the default `docker-compose.yml`, it's possible to export `$GUNICORN_OPTS` to `--reload --workers 1 --timeout 180` in `.env` or something.
+
+It's also possible to have the debugger running any time `$DEBUG=True`, though this requires changing three files that can't be committed back to main. The idea is to add an environment variable, `$DEBUG`, such that if it's `True`, the server will run `debugpy` on port 3000:
+`docker-compose.yml`, around lines 7-8 or so, under `environment:`:
+
+    environment:
+      - OL_CONFIG=${OL_CONFIG:-/openlibrary/conf/openlibrary.yml}
+      - GUNICORN_OPTS=${GUNICORN_OPTS:- --reload --workers 4 --timeout 180}
+      - DEBUG=${DEBUG:- False}  # Add this
+
+Add a `.env` in the openlibrary root for `docker-compose` to pull environment variables from. Inside, add:
+
+    DEBUG=True
+    GUNICORN_OPTS=--reload --workers 1 --timeout 180
+
+This will override the default vales for `$DEBUG` and `$GUNICORN_OPTS`. `DEBUG=True` will be read by a function we'll add to `openlibrary/plugins/admin/code.py`, and the override for `$GUNICORN_OPTS` changes the number of workers so `debugpy` can attach to the one worker process.
+
+Edit `openlibrary/plugins/admin/code.py` to add, around line 919, just above `setup()` at the very end:
+
+    # Debug
+    if os.getenv("DEBUG"):
+        import debugpy
+        debugpy.listen(address=('0.0.0.0', 3000))
+        logger.info("Debugger listening on port 3000")
+
+Now the debugger will be running every time `gunincorn` restarts (i.e. every save), and it can be connected to, within Lunarvim anyway, with `<leader>ds` and selecting `Python: Attach`, as specified in `.vscode/launch.json` above.
