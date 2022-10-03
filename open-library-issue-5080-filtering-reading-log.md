@@ -16,21 +16,25 @@ Filter reading log
 - Possible make a `dataclass` that is something like:
 ```python
 @dataclass
-class ReadingLogWork:
-  user_rating: int
-  read_status: ?
-  logged_date: datetime
-  logged_edition_id: str  # currently this is "/book/OL1234M" if it exists. It's in thte solr_work, but it may make some sense to take some values in there attributes. Need to see more thoroughly how this would get used.
-  solr_work: dict[str, Any]  # I can maybe make this a bit better.
-  other_mystery_things: ?
+class UserReadingLogWork:
+    """
+    One reading log item to hold all the attributes to avoid requerying.
+    """
+    user: User
+    rating: int
+    read_status: str  # enum?
+    logged_date: datetime
+    logged_edition_id: str  # currently this is "/book/OL1234M" if it exists. It's in thte solr_work, but it may make some sense to take some values in there attributes. Need to see more thoroughly how this would get used.
+    solr_work: dict[str, Any]  # I can maybe make this a bit better.
+    other_mystery_things: str  # ?
 
-  __post_init__(self) -> None:
-      self.user_rating = get_user_rating(user)
+    def __post_init__(self) -> None:
+        self.user_rating = self.get_user_rating(self.user)
 
-  @staticmethod
-  def get_user_rating(user) -> int:
-      """Set the user rating"""
-      passs
+    @staticmethod
+    def get_user_rating(user) -> str:
+        """Set the user rating"""
+        pass
 ```
 
 # Implementation issues
@@ -61,6 +65,8 @@ def process_logged_books(self, logged_books):
 This brings us to my concern.
 
 The above relies on the results from `get_users_logged_books` and `web.ctx.site.get_many(work_ids)` being in the same order. In an attempt to cut back on the number of queries (Solr is later queried for each work anyway, for example), to limit the number of places we look for info, and to handle the filtering of reading log data by author and edition, I here query Solr and then unite the Solr and reading log data.
+
+Note, I could also do this within `get_users_logged_books()` in `mybooks.py` so only one 'item' ever comes out for people to work with, and perhaps this could be the `dataclass`.
 
 This creates two issues:
 1. the lists are no longer in the same order, so they must be searched, which requires multiple partial passes; and
